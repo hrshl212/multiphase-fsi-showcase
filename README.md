@@ -17,14 +17,17 @@ This repository shows code-development work I did at **Johns Hopkins University*
 
 The air and water are solved as one incompressible fluid whose density and viscosity vary through a volume-fraction field φ:
 
-$$
-\nabla\cdot\mathbf u = 0,\qquad
-\rho\left(\frac{\partial \mathbf u}{\partial t} + \mathbf u\cdot\nabla\mathbf u\right)
+```math
+\nabla\cdot\mathbf{u} = 0
+```
+
+```math
+\rho\left(\frac{\partial \mathbf{u}}{\partial t} + \mathbf{u}\cdot\nabla\mathbf{u}\right)
 = -\nabla p
-+ \frac{1}{Re}\nabla\cdot\left[\mu\left(\nabla\mathbf u + \nabla\mathbf u^{T}\right)\right]
-+ \frac{\rho}{Fr^{2}}\,\hat{\mathbf g}
++ \frac{1}{Re}\nabla\cdot\left[\mu\left(\nabla\mathbf{u} + \nabla\mathbf{u}^{T}\right)\right]
++ \frac{\rho}{Fr^{2}}\,\hat{\mathbf{g}}
 + \frac{1}{We}\,\kappa\,\nabla\phi
-$$
+```
 
 The equations are nondimensionalised with the water properties, the chord *c* and the freestream speed *U*∞, giving Re = ρ_w U∞ c / μ_w, Fr = U∞ / √(gc) and We = ρ_w U∞² c / σ.
 

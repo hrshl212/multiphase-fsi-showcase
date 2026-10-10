@@ -34,6 +34,7 @@ The equations are nondimensionalised with the water properties, the chord *c* an
 What I developed on top of the existing single-phase immersed-boundary solver:
 
 - **Interface capturing.** I added algebraic VOF transport of φ, with a fifth-order WENO scheme written for non-uniform Cartesian grids. The same scheme is used for momentum convection.
+- **Interface regularisation (ACDI).** I added the accurate conservative diffuse-interface (ACDI) regularisation of Jain (2022), which keeps the interface about one cell thick and stops it from breaking up into a spray of partly filled cells. The mass flux that the regularisation adds is also carried in the momentum equation, so mass and momentum are transported consistently.
 - **Variable-density projection.** I wrote a fractional-step method with a density-weighted pressure Poisson equation. It is face-consistent: the face density used in the Poisson operator and in the velocity correction is the same. I also added a reduced-pressure treatment of gravity, so the hydrostatic part of the pressure is removed.
 - **Surface tension.** I implemented a balanced-force continuum-surface-force (CSF) model, evaluated at the cell faces with the same discrete operators as the pressure correction.
 - **Moving body and contact line.**
@@ -56,6 +57,7 @@ What I developed on top of the existing single-phase immersed-boundary solver:
 | Flow | Re = 10 000, **Fr = 0.2**, We = 1323 |
 | Phases | Density ratio 100 : 1, viscosity ratio 100 : 1 |
 | Contact angle | 70° |
+| Interface | ACDI regularisation, velocity scale Γ = 7 U∞, interface thickness ≈ one cell |
 | Domain / grid | 250c × 95c (2-D); 1000 × 950 non-uniform cells, about 207 cells per chord near the foil and interface |
 | Time step | Δt = 2 × 10⁻⁴ (25 000 steps per flapping cycle) |
 
@@ -69,9 +71,11 @@ What I developed on top of the existing single-phase immersed-boundary solver:
 | t/T | Phase | What happens |
 |---|---|---|
 | **0.36** | Exit | The upper surface has broken through. A thin water film is carried up over the foil, while the leading-edge vortex and a long shear layer stay in the water. |
-| **0.50** | In air | The foil is fully in air at the top of the stroke. The film has broken up into a disturbed surface, and the vortex pair from the upstroke travels down and downstream in the water. |
-| **0.68** | Re-entry | The foil plunges back in and carries a thin layer of air down along its lower surface. A strong vortex is shed behind the trailing edge. |
-| **0.80** | Submerged | The foil is fully back in the water. The surface behind it is drawn down into a trough toward the trailing edge. |
+| **0.50** | In air | The foil is fully in air at the top of the stroke. The film has drained off, leaving a disturbed surface beneath it, and the vortex pair from the upstroke travels down and downstream in the water. |
+| **0.68** | Re-entry | The foil plunges back in and carries pockets of air down along its lower surface. A vortex pair is shed into the water behind the trailing edge. |
+| **0.80** | Submerged | The foil is fully back in the water. The surface above it is pulled down into a trough that ends in an air cavity above the trailing edge. |
+
+In the air, vorticity stays in thin layers close to the surface. Without the ACDI regularisation the interface breaks up into partly filled cells at re-entry and spurious vorticity fills the air above it; with ACDI the air-side enstrophy at re-entry is 55–74% lower.
 
 Individual frames are in [`figures/`](figures/).
 
@@ -81,13 +85,13 @@ Individual frames are in [`figures/`](figures/).
   <img src="figures/force_history.png" width="640" alt="Foil position, thrust and vertical force coefficients versus time">
 </p>
 
-Grey bands mark when the foil is crossing the still-water level. The blue band marks when it is entirely in air.
+Grey bands mark when the foil is crossing the still-water level. The blue band marks when it is entirely in air. C_y includes the buoyancy of the still water, which the reduced-pressure formulation leaves out of the computed pressure force (+3.14 when the foil is fully submerged).
 
-- **Thrust collapses in air.** The thrust coefficient C_T rises to about 0.75 during the submerged upstroke and falls to about −0.1 while the foil is in air. It recovers only after re-entry. The foil makes no useful thrust for about a quarter of the cycle.
-- **Re-entry brings the largest vertical loads.** The vertical force coefficient C_y goes from about −3 in air to about +5 at re-entry, then to about +8 (with spikes to about 11) in the submerged downstroke that follows.
-- **The exit leaves a sharp signature.** As the surface breaks (t/T ≈ 0.38), C_y rises by about 5 within a few hundredths of a cycle.
+- **Thrust collapses in air.** The thrust coefficient C_T rises to about 0.8 at the end of the submerged upstroke and falls to about −0.1 while the foil is in air. It recovers only after re-entry, to 0.5–0.7 in the downstroke. The foil makes almost no thrust for about a quarter of the cycle; the mean over the cycle is C_T = 0.28.
+- **Re-entry brings the largest vertical loads.** The vertical force coefficient C_y goes from about −1.4 on average in air to about +5 at re-entry, then to about +11 (with a spike to 14) in the submerged downstroke that follows.
+- **The exit leaves a sharp signature.** As the lower surface breaks through (t/T ≈ 0.39), C_y jumps by about 3.5 within one hundredth of a cycle.
 
-*These are first-cycle results (t/T = 0–0.87), so they include start-up transients.*
+*These are first-cycle results (t/T = 0–1), so they include start-up transients.*
 
 ---
 
@@ -97,10 +101,10 @@ Grey bands mark when the foil is crossing the still-water level. The blue band m
 
 | Metric | Value |
 |---|---|
-| Liquid-volume change over the run | 8.3 × 10⁻⁶ relative (open domain with inflow and outflow) |
+| Liquid-volume change over the run | 1.0 × 10⁻⁵ relative (open domain with inflow and outflow) |
 | Volume fraction φ in the fluid | Stays within [0, 1] |
-| Maximum CFL | 0.83 |
-| Maximum divergence after projection | 5 × 10⁻⁸ |
+| Maximum CFL | 0.74 |
+| Maximum divergence after projection | 2 × 10⁻⁸ |
 
 <p align="center">
   <img src="figures/liquid_volume.png" width="640" alt="Relative change of liquid volume versus time">
@@ -126,7 +130,7 @@ The liquid volume drifts smoothly, and the drift shows no jump as the foil leave
 |---|---|
 | Machine | **Rockfish** cluster (JHU ARCH), Intel compilers and Intel MPI |
 | Parallelisation | MPI domain decomposition, **96 ranks** on 2 nodes |
-| Cost | About **5.5 s per step** for 0.95 M cells; one 24-hour job advances about 15 600 steps |
+| Cost | About **5.6 s per step** for 0.95 M cells; one 24-hour job advances about 15 000 steps |
 | Bottleneck | The variable-density pressure Poisson solve, about 95% of each step's cost |
 | Workflow | Chains of checkpoint/restart runs across 24-hour jobs, and campaign scripts that run a 7-case Fr × St matrix in parallel |
 
